@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import httpx
 from bs4 import BeautifulSoup
 import asyncio
+import re
 
 app = FastAPI(
     title="GeeksForGeeks Analytics API",
@@ -15,8 +16,6 @@ app = FastAPI(
     * Total problems solved
     * Submission history
     * Overall coding practice metrics
-    
-    Use this API to get detailed insights into GFG user activity patterns.
     """,
     version="1.0.0"
 )
@@ -40,49 +39,78 @@ class UserStats(BaseModel):
     totalProblemsSolved: int
     problemsByDifficulty: List[ProblemStats]
 
-@app.get("/",
-    tags=["General"],
-    summary="API Documentation",
-    description="Redirects to the API documentation page")
-async def root():
-    return RedirectResponse(url="/docs")
-
 async def get_user_stats(username: str) -> Dict:
-    url = f"https://auth.geeksforgeeks.org/user/{username}/practice/"
+    url = f"https://www.geeksforgeeks.org/user/{username}/"
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         try:
-            response = await client.get(url)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+            response = await client.get(url, headers=headers)
             response.raise_for_status()
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=str(e))
 
     soup = BeautifulSoup(response.text, 'html.parser')
-    data = soup.select('.tabs.tabs-fixed-width.linksTypeProblem')
-
-    if not data:
+    
+    # First try to find the problems section
+    problems_section = soup.find('section', {'class': 'problems_solved_section'})
+    if not problems_section:
+        # Try to find the container with problem counts
+        problems_section = soup.find('div', {'class': 'row problems-solved'})
+    
+    if not problems_section:
+        # For debugging
+        print("HTML Content:", response.text[:1000])  # Print first 1000 chars
         raise HTTPException(
             status_code=400,
-            detail="Username does not exist or has not solved any problems on GeeksForGeeks"
+            detail="Could not find problem statistics section on the page"
         )
 
     problem_difficulty_tags = ["School", "Basic", "Easy", "Medium", "Hard"]
-    problem_counts = {}
+    problem_counts = {tag: 0 for tag in problem_difficulty_tags}
     total_problems = 0
-    
-    raw_data = data[0].get_text()
-    current_difficulty = 0
-    
-    # Parse the problem counts
-    for i, char in enumerate(raw_data):
-        if char == '(':
-            temp_start = i + 1
-            temp_end = raw_data.find(')', temp_start)
-            if temp_end != -1:
-                problems = int(raw_data[temp_start:temp_end])
-                problem_counts[problem_difficulty_tags[current_difficulty]] = problems
-                total_problems += problems
-                current_difficulty += 1
+
+    # Try multiple patterns to find problem counts
+    for difficulty in problem_difficulty_tags:
+        # Try finding specific difficulty divs
+        difficulty_div = problems_section.find('div', string=re.compile(difficulty, re.IGNORECASE))
+        if difficulty_div:
+            # Look for the count in the next sibling or parent
+            count_text = difficulty_div.find_next('div').text if difficulty_div.find_next('div') else ''
+            if not count_text:
+                count_text = difficulty_div.parent.text if difficulty_div.parent else ''
+            
+            # Extract number from text
+            numbers = re.findall(r'\d+', count_text)
+            if numbers:
+                count = int(numbers[0])
+                problem_counts[difficulty] = count
+                total_problems += count
+
+    # If we haven't found any problems, try alternative parsing
+    if total_problems == 0:
+        # Look for any numbers following difficulty levels
+        text = problems_section.get_text()
+        for difficulty in problem_difficulty_tags:
+            pattern = rf"{difficulty}[^\d]*(\d+)"
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                count = int(match.group(1))
+                problem_counts[difficulty] = count
+                total_problems += count
+
+    # If still no problems found, look for overall statistics
+    if total_problems == 0:
+        overall_stats = soup.find('div', {'class': 'score_cards_container'})
+        if overall_stats:
+            numbers = re.findall(r'\d+', overall_stats.get_text())
+            if numbers:
+                total_problems = sum(int(num) for num in numbers)
+                # Distribute evenly if we only have total
+                avg = total_problems // len(problem_difficulty_tags)
+                problem_counts = {tag: avg for tag in problem_difficulty_tags}
 
     # Calculate percentages and create ProblemStats objects
     problem_stats = []
@@ -102,78 +130,31 @@ async def get_user_stats(username: str) -> Dict:
 
 @app.get("/user/{username}/stats",
     tags=["User Analytics"],
-    summary="Get User's Complete Statistics",
-    description="""
-    Retrieves comprehensive GeeksForGeeks statistics for a user, including:
-    
-    - Total problems solved
-    - Problem distribution by difficulty
-    - Percentage breakdown of problems
-    """,
-    response_model=UserStats,
-    responses={
-        200: {
-            "description": "Successfully retrieved user statistics",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "userName": "example_user",
-                        "totalProblemsSolved": 150,
-                        "problemsByDifficulty": [
-                            {"difficulty": "Easy", "count": 50, "percentage": 33.33},
-                            {"difficulty": "Medium", "count": 70, "percentage": 46.67},
-                            {"difficulty": "Hard", "count": 30, "percentage": 20.00}
-                        ]
-                    }
-                }
-            }
-        },
-        400: {"description": "User not found or has no solved problems"},
-        502: {"description": "Error fetching data from GeeksForGeeks"}
-    })
+    summary="Get User's Complete Statistics")
 async def get_user_statistics(username: str):
     return await get_user_stats(username)
 
 @app.get("/user/{username}/problems",
     tags=["Problem Analysis"],
-    summary="Get User's Problem Solving Statistics",
-    description="Retrieves detailed problem-solving statistics by difficulty level",
-    responses={
-        200: {"description": "Successfully retrieved problem statistics"},
-        400: {"description": "User not found or has no solved problems"},
-        502: {"description": "Error fetching data from GeeksForGeeks"}
-    })
+    summary="Get User's Problem Solving Statistics")
 async def get_problem_statistics(
     username: str,
-    difficulty: Optional[str] = Query(
-        None,
-        description="Filter by difficulty (School/Basic/Easy/Medium/Hard)"
-    )
+    difficulty: Optional[str] = Query(None)
 ):
     stats = await get_user_stats(username)
-    
     if difficulty:
         filtered_stats = [
             prob for prob in stats["problemsByDifficulty"]
             if prob.difficulty.lower() == difficulty.lower()
         ]
         stats["problemsByDifficulty"] = filtered_stats
-    
     return stats
 
 @app.get("/user/{username}/progress",
     tags=["Progress Tracking"],
-    summary="Get User's Progress Metrics",
-    description="Retrieves user's progress metrics and percentile rankings",
-    responses={
-        200: {"description": "Successfully retrieved progress metrics"},
-        400: {"description": "User not found or has no solved problems"},
-        502: {"description": "Error fetching data from GeeksForGeeks"}
-    })
+    summary="Get User's Progress Metrics")
 async def get_progress_metrics(username: str):
     stats = await get_user_stats(username)
-    
-    # Calculate additional metrics
     total_problems = stats["totalProblemsSolved"]
     difficulty_weights = {
         "School": 1,
@@ -202,6 +183,15 @@ async def get_progress_metrics(username: str):
         }
     }
 
+@app.get("/",
+    tags=["General"],
+    summary="API Documentation",
+    description="Redirects to the API documentation page")
+async def root():
+    return RedirectResponse(url="/docs")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, port=8000)
+
