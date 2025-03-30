@@ -1,7 +1,8 @@
 # GFG-Stats-API
 
-A robust RESTful API to fetch and display GeeksForGeeks statistics for users, built with Flask.
-hosted at [gfg-stats.tashif.codes](https://gfg-stats.tashif.codes)
+A robust RESTful API to fetch and display GeeksForGeeks statistics for users, built with FastAPI.
+
+hosted at ![gfg-stats.tashif.codes](https://gfg-stats.tashif.codes)
 
 ## Features
 
@@ -221,6 +222,7 @@ fetch(`https://gfg-stats.tashif.codes/${username}`)
 
    ```bash
    pip install -r requirements.txt
+   pip install gunicorn
    ```
 
 4. Start the server

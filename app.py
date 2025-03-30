@@ -29,9 +29,9 @@ app.include_router(user_profile.router)
 app.include_router(user_stats.router)    
 app.include_router(docs.router)
 
-@app.get("/docs-redirect")
+@app.get("/docs")
 async def docs_redirect():
-    return RedirectResponse(url="/docs")
+    return RedirectResponse(url="/")
 
 if __name__ == "__main__":
     import uvicorn
