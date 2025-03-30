@@ -330,7 +330,7 @@ async def get_solved_problems(username: str):
 async def get_stats_by_path(username: str):
     """
     Get user stats using username directly in the path.
-    Example: /adarshsharc3pj
+    Example: /khantashif
     """
     try:
         try:
@@ -754,7 +754,7 @@ async def root():
                     </pre>
 
                     <h3>Example</h3>
-                    <pre><code>GET /adarshsharc3pj/profile</code></pre>
+                    <pre><code>GET /khantashif/profile</code></pre>
                     
                     <a href="/docs#/User%20Profile/get_user_profile__username__profile_get" class="try-button" target="_blank">Try it in Swagger UI</a>
                 </div>
@@ -804,7 +804,7 @@ async def root():
                     </pre>
 
                     <h3>Example</h3>
-                    <pre><code>GET /adarshsharc3pj/solved-problems</code></pre>
+                    <pre><code>GET /khantashif/solved-problems</code></pre>
                     
                     <a href="/docs#/Problem%20Analysis/get_solved_problems__username__solved_problems_get" class="try-button" target="_blank">Try it in Swagger UI</a>
                 </div>
