@@ -2,7 +2,16 @@
 
 A robust RESTful API to fetch and display GeeksForGeeks statistics for users, built with FastAPI.
 
-hosted at ![gfg-stats.tashif.codes](https://gfg-stats.tashif.codes)
+Hosted at [gfg-stats.tashif.codes](https://gfg-stats.tashif.codes)
+
+## Interactive Dashboard
+
+The API now features a rich, interactive dashboard that you can use to explore GeeksForGeeks user profiles directly in your browser.
+
+- **Live User Stats:** Enter any GFG username to get up-to-date statistics.
+- **Visualized Data:** See problem-solving stats visualized in a clean, readable bar chart.
+- **Detailed Profile:** View key profile information like coding score, institute rank, and streaks in a modern card-based layout.
+- **Seamless API Documentation:** The dashboard is integrated with the API documentation, so you can explore the data and the API in one place.
 
 ## Features
 
@@ -138,13 +147,13 @@ Returns:
 
 ## API Documentation
 
-Detailed API documentation is available when the server is running by visiting:
+The API documentation is integrated with an interactive dashboard. Visit the root URL when the server is running:
 
 ```
 GET /
 ```
 
-This provides a custom documentation page with detailed information about all endpoints.
+For standard API documentation interfaces, you can use:
 
 For Swagger UI documentation:
 
