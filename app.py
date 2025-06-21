@@ -20,19 +20,23 @@ app.add_middleware(
 
 app.add_exception_handler(HTTPException, http_exception_handler)
 
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
 
 
-app.include_router(user_profile.router)  
-app.include_router(user_stats.router)    
-app.include_router(docs.router)
+app.include_router(user_profile.router)
+app.include_router(user_stats.router)
+app.include_router(docs.docs_router)
+
 
 @app.get("/docs")
 async def docs_redirect():
     return RedirectResponse(url="/")
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app:app", host="0.0.0.0", port=58353, reload=True)
