@@ -1,4 +1,6 @@
 import asyncio
+from collections import Counter
+from datetime import datetime
 from typing import Any, Dict
 
 import httpx
@@ -133,6 +135,12 @@ def _build_solved_stats(submission_payload: Dict[str, Any]) -> Dict[str, Dict[st
     return solved_stats
 
 
+def _iter_submission_details(submission_payload: Dict[str, Any]):
+    for problems in submission_payload.get("result", {}).values():
+        for details in problems.values():
+            yield details
+
+
 def _string_or_default(value: Any, default: str = "") -> str:
     if value is None or value == "":
         return default
@@ -202,4 +210,61 @@ async def get_detailed_user_data(username: str) -> Dict[str, Any]:
         "info": general_info,
         "solvedStats": solved_stats,
         "allProblems": all_problems,
+    }
+
+
+async def get_user_heatmap(
+    username: str,
+    year: int | None = None,
+    month: int | None = None,
+) -> Dict[str, Any]:
+    if username == "favicon.ico":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid username: favicon.ico is not a valid GeeksForGeeks username",
+        )
+
+    if month is not None and year is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Year is required when filtering heatmap data by month.",
+        )
+
+    if month is not None and not 1 <= month <= 12:
+        raise HTTPException(
+            status_code=422,
+            detail="Month must be between 1 and 12.",
+        )
+
+    submission_payload = await _get_submission_data(username)
+    heatmap_counts: Counter[str] = Counter()
+
+    for details in _iter_submission_details(submission_payload):
+        submitted_at = details.get("user_subtime")
+        if not submitted_at:
+            continue
+
+        try:
+            submitted_dt = datetime.strptime(submitted_at, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+
+        if year is not None and submitted_dt.year != year:
+            continue
+
+        if month is not None and submitted_dt.month != month:
+            continue
+
+        heatmap_counts[submitted_dt.date().isoformat()] += 1
+
+    heatmap = [
+        {"date": date, "count": count}
+        for date, count in sorted(heatmap_counts.items())
+    ]
+
+    return {
+        "userName": username,
+        "totalActiveDays": len(heatmap),
+        "totalSubmissions": sum(heatmap_counts.values()),
+        "heatmap": heatmap,
     }

@@ -46,6 +46,18 @@ class SolvedProblems(BaseModel):
     problemsByDifficulty: Dict[str, int]
     problems: List[UserProblemInfo]
 
+
+class HeatmapEntry(BaseModel):
+    date: str
+    count: int
+
+
+class UserHeatmap(BaseModel):
+    userName: str
+    totalActiveDays: int
+    totalSubmissions: int
+    heatmap: List[HeatmapEntry]
+
 class DetailedUserData(BaseModel):
     info: UserProfile
     solvedStats: Dict[str, Dict[str, Any]]

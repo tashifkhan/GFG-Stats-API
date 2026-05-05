@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
-from services.gfg_service import get_detailed_user_data
-from models.responses import UserProfile, SolvedProblems
+from services.gfg_service import get_detailed_user_data, get_user_heatmap
+from models.responses import UserProfile, SolvedProblems, UserHeatmap
 from typing import Dict, Any, List, Optional
 
 # Add a prefix to avoid route conflicts
@@ -87,5 +87,39 @@ async def get_solved_problems(username: str):
                 "message": e.detail,
                 "status_code": e.status_code,
                 "endpoint": "solved-problems"
+            }
+        )
+
+
+@router.get("/{username}/heatmap",
+    tags=["Problem Analysis"],
+    summary="Get User Submission Heatmap",
+    response_model=UserHeatmap,
+    responses={
+        200: {"description": "Daily solved-problem heatmap for the user"},
+        404: {"description": "User not found"},
+        422: {"description": "Invalid heatmap filter or unable to extract user data"},
+        503: {"description": "GeeksForGeeks service unavailable"},
+        504: {"description": "Request timeout"}
+    })
+async def get_submission_heatmap(
+    username: str,
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+):
+    """
+    Get daily solved-problem counts grouped by submission date.
+    Example: /username/heatmap or /username/heatmap?year=2024&month=6
+    """
+    try:
+        return await get_user_heatmap(username, year=year, month=month)
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "error": True,
+                "message": e.detail,
+                "status_code": e.status_code,
+                "endpoint": "heatmap"
             }
         )
