@@ -66,6 +66,8 @@ GET /{username}/profile
 
 Retrieves detailed profile information for a user.
 
+Note: GeeksforGeeks profile pages now live under `/profile/{username}` internally, and this API uses GeeksforGeeks' current JSON endpoints instead of scraping the old legacy profile pages.
+
 #### Parameters
 
 - `username` (path): GeeksForGeeks username
@@ -115,6 +117,8 @@ Returns:
 - Total problems solved
 - Problems solved by difficulty
 - Detailed list of solved problems with links and difficulty levels
+
+Problem URLs in responses use the current `https://www.geeksforgeeks.org/problems/{slug}` format.
 
 #### Example Response
 
