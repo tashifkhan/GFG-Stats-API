@@ -54,6 +54,11 @@ class HeatmapEntry(BaseModel):
 
 class UserHeatmap(BaseModel):
     userName: str
+    range: str
+    accountCreatedDate: str
+    fromDate: str
+    toDate: str
+    availableYears: List[int]
     totalActiveDays: int
     totalSubmissions: int
     heatmap: List[HeatmapEntry]

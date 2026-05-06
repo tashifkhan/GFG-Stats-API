@@ -1,6 +1,6 @@
 import asyncio
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict
 
 import httpx
@@ -148,6 +148,23 @@ def _string_or_default(value: Any, default: str = "") -> str:
     return str(value)
 
 
+def _parse_profile_created_date(profile_data: Dict[str, Any]) -> datetime:
+    created_at = profile_data.get("created_date")
+    if not created_at:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not determine the GeeksForGeeks account creation date.",
+        )
+
+    try:
+        return datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid GeeksForGeeks account creation date format.",
+        )
+
+
 async def get_user_stats(username: str) -> Dict[str, Any]:
     if username == "favicon.ico":
         raise HTTPException(
@@ -215,6 +232,7 @@ async def get_detailed_user_data(username: str) -> Dict[str, Any]:
 
 async def get_user_heatmap(
     username: str,
+    range_name: str = "all",
     year: int | None = None,
     month: int | None = None,
 ) -> Dict[str, Any]:
@@ -222,6 +240,12 @@ async def get_user_heatmap(
         raise HTTPException(
             status_code=400,
             detail="Invalid username: favicon.ico is not a valid GeeksForGeeks username",
+        )
+
+    if range_name not in {"all", "last365days", "year"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Range must be one of: all, last365days, year.",
         )
 
     if month is not None and year is None:
@@ -236,7 +260,52 @@ async def get_user_heatmap(
             detail="Month must be between 1 and 12.",
         )
 
-    submission_payload = await _get_submission_data(username)
+    profile_data, submission_payload = await asyncio.gather(
+        _get_profile_data(username),
+        _get_submission_data(username),
+    )
+    created_dt = _parse_profile_created_date(profile_data)
+    created_date = created_dt.date()
+    today = datetime.utcnow().date()
+    available_years = list(range(today.year, created_date.year - 1, -1))
+
+    if year is not None and year not in available_years:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Year must be between {created_date.year} and {today.year} for this user.",
+        )
+
+    if range_name == "year" and year is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Year is required when range is set to 'year'.",
+        )
+
+    if range_name == "last365days" and month is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Month filter is not supported when range is set to 'last365days'.",
+        )
+
+    from_date = created_date
+    to_date = today
+
+    if range_name == "last365days":
+        from_date = max(created_date, today - timedelta(days=364))
+    elif year is not None:
+        from_date = datetime(year, 1, 1).date()
+        to_date = datetime(year, 12, 31).date()
+
+        if month is not None:
+            from_date = datetime(year, month, 1).date()
+            if month == 12:
+                to_date = datetime(year, 12, 31).date()
+            else:
+                to_date = (datetime(year, month + 1, 1) - timedelta(days=1)).date()
+
+        if from_date < created_date:
+            from_date = created_date
+
     heatmap_counts: Counter[str] = Counter()
 
     for details in _iter_submission_details(submission_payload):
@@ -249,13 +318,11 @@ async def get_user_heatmap(
         except ValueError:
             continue
 
-        if year is not None and submitted_dt.year != year:
+        submitted_date = submitted_dt.date()
+        if submitted_date < from_date or submitted_date > to_date:
             continue
 
-        if month is not None and submitted_dt.month != month:
-            continue
-
-        heatmap_counts[submitted_dt.date().isoformat()] += 1
+        heatmap_counts[submitted_date.isoformat()] += 1
 
     heatmap = [
         {"date": date, "count": count}
@@ -264,6 +331,11 @@ async def get_user_heatmap(
 
     return {
         "userName": username,
+        "range": range_name,
+        "accountCreatedDate": created_date.isoformat(),
+        "fromDate": from_date.isoformat(),
+        "toDate": to_date.isoformat(),
+        "availableYears": available_years,
         "totalActiveDays": len(heatmap),
         "totalSubmissions": sum(heatmap_counts.values()),
         "heatmap": heatmap,

@@ -104,15 +104,16 @@ async def get_solved_problems(username: str):
     })
 async def get_submission_heatmap(
     username: str,
+    range: str = Query(default="all", pattern="^(all|last365days|year)$"),
     year: int | None = Query(default=None, ge=2000, le=2100),
     month: int | None = Query(default=None, ge=1, le=12),
 ):
     """
     Get daily solved-problem counts grouped by submission date.
-    Example: /username/heatmap or /username/heatmap?year=2024&month=6
+    Example: /username/heatmap?range=last365days or /username/heatmap?range=year&year=2024
     """
     try:
-        return await get_user_heatmap(username, year=year, month=month)
+        return await get_user_heatmap(username, range_name=range, year=year, month=month)
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,
