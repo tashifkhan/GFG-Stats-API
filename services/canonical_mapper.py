@@ -1,9 +1,9 @@
-"""Builds the unified cross-platform card for GeeksforGeeks.
+"""Builds the canonical cross-platform card for GeeksforGeeks.
 
 Profile + difficulty breakdown come from ``get_detailed_user_data`` and the
 heatmap from ``get_user_heatmap`` (active-day list, with computed streaks).
 GeeksforGeeks exposes no contests, rating, badges or per-topic tags publicly, so
-those sections stay empty. See ../UNIFIED_SCHEMA.md.
+those sections stay empty. See ../CANONICAL_SCHEMA.md.
 """
 
 import asyncio
@@ -11,26 +11,25 @@ from datetime import date, datetime, timedelta, timezone
 from math import ceil
 from typing import Any, Dict, Optional
 
-from models.unified import (
-    HeatDay,
-    UnifiedBadges,
-    UnifiedCard,
-    UnifiedContests,
-    UnifiedHeatmap,
-    UnifiedProfile,
-    UnifiedRating,
-    UnifiedStats,
-    UnifiedSummary,
-    YearContribution,
-)
-from services.gfg_service import get_detailed_user_data, get_user_heatmap
+from models.canonical.badges import Badges
+from models.canonical.card import Card
+from models.canonical.contests import Contests
+from models.canonical.heatmap import HeatDay, Heatmap, YearContribution
+from models.canonical.profile import Profile
+from models.canonical.rating import Rating
+from models.canonical.stats import Stats
+from models.canonical.summary import Summary
+from services import topics
+from services.heatmap import get_user_heatmap
+from services.heatmap_window import window_heatmap
+from services.profile import get_detailed_user_data
 
 STANDARD_DIFFICULTIES = ["school", "basic", "easy", "medium", "hard"]
 
 
-def profile_from(detailed: Dict[str, Any], username: str) -> UnifiedProfile:
+def profile_from(detailed: Dict[str, Any], username: str) -> Profile:
     info = detailed.get("info", {})
-    return UnifiedProfile(
+    return Profile(
         displayName=info.get("fullName") or None,
         username=info.get("userName") or username,
         avatar=info.get("profilePicture") or None,
@@ -39,17 +38,17 @@ def profile_from(detailed: Dict[str, Any], username: str) -> UnifiedProfile:
     )
 
 
-def stats_from(detailed: Dict[str, Any]) -> UnifiedStats:
+async def stats_from(detailed: Dict[str, Any]) -> Stats:
     info = detailed.get("info", {})
     solved_stats = detailed.get("solvedStats", {})
     by_difficulty = {
         difficulty: int(solved_stats.get(difficulty, {}).get("count", 0) or 0)
         for difficulty in STANDARD_DIFFICULTIES
     }
-    return UnifiedStats(
+    return Stats(
         totalSolved=int(info.get("totalProblemsSolved", 0) or 0),
         byDifficulty=by_difficulty,
-        topicAnalysis=[],
+        topicAnalysis=await topics.build_topic_analysis(detailed.get("allProblems", [])),
     )
 
 
@@ -59,7 +58,7 @@ def _level(count: int, max_daily: int) -> int:
     return min(4, max(1, ceil((count / max_daily) * 4)))
 
 
-def heatmap_from(heatmap_data: Dict[str, Any]) -> UnifiedHeatmap:
+def heatmap_from(heatmap_data: Dict[str, Any]) -> Heatmap:
     entries = heatmap_data.get("heatmap", []) or []
     date_counts: dict[date, int] = {}
     for entry in entries:
@@ -70,7 +69,7 @@ def heatmap_from(heatmap_data: Dict[str, Any]) -> UnifiedHeatmap:
         date_counts[day] = date_counts.get(day, 0) + int(entry.get("count", 0) or 0)
 
     if not date_counts:
-        return UnifiedHeatmap(
+        return Heatmap(
             totalActiveDays=int(heatmap_data.get("totalActiveDays", 0) or 0),
             totalSubmissions=int(heatmap_data.get("totalSubmissions", 0) or 0),
         )
@@ -107,7 +106,7 @@ def heatmap_from(heatmap_data: Dict[str, Any]) -> UnifiedHeatmap:
         bucket["totalSubmissions"] += count
         bucket["activeDays"] += 1
 
-    return UnifiedHeatmap(
+    return Heatmap(
         totalSubmissions=sum(date_counts.values()),
         totalActiveDays=len(active_dates),
         currentStreak=current_streak,
@@ -134,8 +133,8 @@ def heatmap_from(heatmap_data: Dict[str, Any]) -> UnifiedHeatmap:
     )
 
 
-def summary_from(card: UnifiedCard) -> UnifiedSummary:
-    return UnifiedSummary(
+def summary_from(card: Card) -> Summary:
+    return Summary(
         totalSolved=card.stats.totalSolved,
         totalActiveDays=card.heatmap.totalActiveDays,
         totalContests=0,
@@ -143,17 +142,18 @@ def summary_from(card: UnifiedCard) -> UnifiedSummary:
     )
 
 
-async def build_card(username: str) -> UnifiedCard:
+async def build_card(username: str) -> Card:
     detailed, heatmap_data = await asyncio.gather(
         get_detailed_user_data(username),
         get_user_heatmap(username, range_name="all"),
     )
-    return UnifiedCard(
+    available_years = [int(y) for y in (heatmap_data.get("availableYears") or [])]
+    return Card(
         username=username,
         profile=profile_from(detailed, username),
-        stats=stats_from(detailed),
-        contests=UnifiedContests(),
-        rating=UnifiedRating(),
-        heatmap=heatmap_from(heatmap_data),
-        badges=UnifiedBadges(),
+        stats=await stats_from(detailed),
+        contests=Contests(),
+        rating=Rating(),
+        heatmap=window_heatmap(heatmap_from(heatmap_data), "all", None, available_years=available_years or None),
+        badges=Badges(),
     )
