@@ -41,6 +41,7 @@ pydantic-core==2.46.4
     # via pydantic
 pydantic-settings==2.14.1
     # via gfg-api
+redis>=5.2.0
 python-dotenv==1.2.2
     # via pydantic-settings
 starlette==1.2.0
