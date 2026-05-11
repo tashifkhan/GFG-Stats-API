@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
 from config import settings
+from core.middleware import CacheRateLimitMiddleware
 from models.exceptions import http_exception_handler
-from routers import user_stats, user_profile, docs, unified
+from routes import badges, contests, docs, heatmap, legacy, profile, rating, stats, summary, topics
 
 app = FastAPI(
     title=settings.app_name,
@@ -17,6 +18,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(CacheRateLimitMiddleware, platform="gfg")
 
 app.add_exception_handler(HTTPException, http_exception_handler)
 
@@ -26,10 +28,16 @@ async def favicon():
     return Response(status_code=204)
 
 
-app.include_router(unified.router)
-app.include_router(user_profile.router)
-app.include_router(user_stats.router)
 app.include_router(docs.docs_router)
+app.include_router(profile.router)
+app.include_router(stats.router)
+app.include_router(contests.router)
+app.include_router(rating.router)
+app.include_router(heatmap.router)
+app.include_router(topics.router)
+app.include_router(badges.router)
+app.include_router(summary.router)
+app.include_router(legacy.router)
 
 
 @app.get("/docs")
