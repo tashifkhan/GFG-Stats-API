@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from services.gfg_service import get_detailed_user_data, get_user_heatmap
+from services import unified_mapper
 from models.responses import UserProfile, SolvedProblems, UserHeatmap
+from models.unified import make_envelope
 from typing import Dict, Any, List, Optional
 
 # Add a prefix to avoid route conflicts
@@ -12,7 +14,6 @@ router = APIRouter(
 
 @router.get("/{username}/profile",
     summary="Get User's Profile Information",
-    response_model=UserProfile,
     responses={
         200: {"description": "Successful response with user profile data"},
         404: {"description": "User not found"},
@@ -27,17 +28,18 @@ async def get_user_profile(username: str):
     """
     try:
         detailed_data = await get_detailed_user_data(username)
-        
+
         # Ensure fullName is a string, not None
         if detailed_data["info"]["fullName"] is None:
             detailed_data["info"]["fullName"] = ""
-            
+
         # Make sure all string fields are actual strings, not None
         for key in ["userName", "fullName", "profilePicture", "institute", "instituteRank", "currentStreak", "maxStreak"]:
             if key in detailed_data["info"] and detailed_data["info"][key] is None:
                 detailed_data["info"][key] = ""
-                
-        return detailed_data["info"]
+
+        data = unified_mapper.profile_from(detailed_data, username)
+        return make_envelope(username, data, legacy=detailed_data["info"])
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -52,7 +54,7 @@ async def get_user_profile(username: str):
 @router.get("/{username}/solved-problems",
     tags=["Problem Analysis"],
     summary="Get User's Solved Problems",
-    response_model=SolvedProblems,
+    deprecated=True,
     responses={
         200: {"description": "List of all problems solved by the user"},
         404: {"description": "User not found"},
@@ -63,22 +65,24 @@ async def get_user_profile(username: str):
 async def get_solved_problems(username: str):
     """
     Get a list of all problems solved by the user with details.
+    Legacy alias; prefer ``GET /{username}/stats``.
     Example: /username/solved-problems
     """
     try:
         detailed_data = await get_detailed_user_data(username)
-        
+
         difficulty_counts = {
-            difficulty: stats["count"] 
+            difficulty: stats["count"]
             for difficulty, stats in detailed_data["solvedStats"].items()
         }
-        
-        return {
+
+        legacy = {
             "userName": username,
             "totalProblemsSolved": len(detailed_data["allProblems"]),
             "problemsByDifficulty": difficulty_counts,
             "problems": detailed_data["allProblems"]
         }
+        return make_envelope(username, unified_mapper.stats_from(detailed_data), legacy=legacy)
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -94,7 +98,6 @@ async def get_solved_problems(username: str):
 @router.get("/{username}/heatmap",
     tags=["Problem Analysis"],
     summary="Get User Submission Heatmap",
-    response_model=UserHeatmap,
     responses={
         200: {"description": "Daily solved-problem heatmap for the user"},
         404: {"description": "User not found"},
@@ -113,7 +116,8 @@ async def get_submission_heatmap(
     Example: /username/heatmap?range=last365days or /username/heatmap?range=year&year=2024
     """
     try:
-        return await get_user_heatmap(username, range_name=range, year=year, month=month)
+        legacy = await get_user_heatmap(username, range_name=range, year=year, month=month)
+        return make_envelope(username, unified_mapper.heatmap_from(legacy), legacy=legacy)
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,

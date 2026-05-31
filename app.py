@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
 from config import settings
 from models.exceptions import http_exception_handler
-from routers import user_stats, user_profile, docs
+from routers import user_stats, user_profile, docs, unified
 
 app = FastAPI(
     title=settings.app_name,
@@ -26,6 +26,7 @@ async def favicon():
     return Response(status_code=204)
 
 
+app.include_router(unified.router)
 app.include_router(user_profile.router)
 app.include_router(user_stats.router)
 app.include_router(docs.docs_router)
