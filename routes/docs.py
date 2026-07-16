@@ -23,6 +23,7 @@ CANONICAL_ENDPOINTS = [
     ('GET', '/{username}', 'Summary'),
     ('GET', '/{username}/profile', 'Profile'),
     ('GET', '/{username}/stats', 'Solved stats'),
+    ('GET', '/{username}/stats/svg', 'Embeddable stats SVG card (24h cache)'),
     ('GET', '/{username}/topics', 'Topic analysis'),
     ('GET', '/{username}/contests', 'Empty contests'),
     ('GET', '/{username}/rating', 'Empty rating'),
