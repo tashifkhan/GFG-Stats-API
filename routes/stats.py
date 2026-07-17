@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from models.canonical import make_envelope
 from services import canonical_mapper
 from services.profile import get_detailed_user_data
-from services.stats_svg import error_svg_response, stats_svg_response
+from services.stats_svg import error_svg_response, parse_exclude_list, stats_svg_response
 
 
 router = APIRouter(tags=["Canonical"])
@@ -14,11 +14,21 @@ router = APIRouter(tags=["Canonical"])
 async def get_stats_svg(
     username: str,
     theme: str = Query("dark", description="Card theme: dark or light"),
+    exclude: str | None = Query(
+        None,
+        description="Comma-separated topics to exclude from the topic bars",
+    ),
 ):
     try:
         detailed_data = await get_detailed_user_data(username)
         data = await canonical_mapper.stats_from(detailed_data)
-        return stats_svg_response("gfg", username, data, theme=theme)
+        return stats_svg_response(
+            "gfg",
+            username,
+            data,
+            theme=theme,
+            exclude=parse_exclude_list(exclude),
+        )
     except HTTPException as e:
         return error_svg_response(
             str(e.detail),
