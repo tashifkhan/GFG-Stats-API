@@ -6,7 +6,6 @@ GeeksforGeeks exposes no contests, rating, badges or per-topic tags publicly, so
 those sections stay empty. See ../CANONICAL_SCHEMA.md.
 """
 
-import asyncio
 from datetime import date, datetime, timedelta, timezone
 from math import ceil
 from typing import Any, Dict, Optional
@@ -20,6 +19,7 @@ from models.canonical.rating import Rating
 from models.canonical.stats import Stats
 from models.canonical.summary import Summary
 from services import topics
+from services.client import gather_required
 from services.heatmap import get_user_heatmap
 from services.heatmap_window import window_heatmap
 from services.profile import get_detailed_user_data
@@ -38,7 +38,7 @@ def profile_from(detailed: Dict[str, Any], username: str) -> Profile:
     )
 
 
-async def stats_from(detailed: Dict[str, Any]) -> Stats:
+async def stats_from(detailed: Dict[str, Any], include_topics: bool = True) -> Stats:
     info = detailed.get("info", {})
     solved_stats = detailed.get("solvedStats", {})
     by_difficulty = {
@@ -48,7 +48,7 @@ async def stats_from(detailed: Dict[str, Any]) -> Stats:
     return Stats(
         totalSolved=int(info.get("totalProblemsSolved", 0) or 0),
         byDifficulty=by_difficulty,
-        topicAnalysis=await topics.build_topic_analysis(detailed.get("allProblems", [])),
+        topicAnalysis=await topics.build_topic_analysis(detailed.get("allProblems", [])) if include_topics else [],
     )
 
 
@@ -142,8 +142,8 @@ def summary_from(card: Card) -> Summary:
     )
 
 
-async def build_card(username: str) -> Card:
-    detailed, heatmap_data = await asyncio.gather(
+async def build_card(username: str, include_topics: bool = True) -> Card:
+    detailed, heatmap_data = await gather_required(
         get_detailed_user_data(username),
         get_user_heatmap(username, range_name="all"),
     )
@@ -151,7 +151,7 @@ async def build_card(username: str) -> Card:
     return Card(
         username=username,
         profile=profile_from(detailed, username),
-        stats=await stats_from(detailed),
+        stats=await stats_from(detailed, include_topics),
         contests=Contests(),
         rating=Rating(),
         heatmap=window_heatmap(heatmap_from(heatmap_data), "all", None, available_years=available_years or None),
