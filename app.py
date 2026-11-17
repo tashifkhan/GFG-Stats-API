@@ -1,10 +1,20 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
 from config import settings
 from core.middleware import CacheRateLimitMiddleware
+from core.deadline import RequestDeadlineMiddleware
 from models.exceptions import http_exception_handler
 from routes import badges, contests, docs, heatmap, legacy, profile, rating, stats, summary, topics
+
+# Configure only application logs. HTTP clients can include query strings in theirs.
+logger = logging.getLogger("gfg")
+if not logger.handlers:
+    logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
+logger.propagate = False
 
 app = FastAPI(
     title=settings.app_name,
@@ -12,13 +22,14 @@ app = FastAPI(
     version=settings.app_version,
 )
 
+app.add_middleware(CacheRateLimitMiddleware, platform="gfg")
+app.add_middleware(RequestDeadlineMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(CacheRateLimitMiddleware, platform="gfg")
 
 app.add_exception_handler(HTTPException, http_exception_handler)
 

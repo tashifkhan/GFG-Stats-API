@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     
-    request_timeout: float = 10.0
+    # HTTPX timeouts apply per network phase. The client also enforces a total limit.
+    request_timeout: float = 3.0
+    response_timeout: float = 8.0
+    topic_timeout: float = 1.5
 
 settings = Settings()

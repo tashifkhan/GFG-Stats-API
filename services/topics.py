@@ -4,6 +4,9 @@ GFG's solved-problem list (``services/profile.py::get_detailed_user_data``)
 gives a slug per problem but no topic tags. Each problem's tags are fetched
 individually from GFG's practice API and tallied into a topic breakdown. See
 ../CANONICAL_SCHEMA.md.
+
+Enrichment is optional: it runs under one shared budget and is dropped rather
+than extending the request past the platform's function limit.
 """
 
 import asyncio
@@ -11,6 +14,7 @@ from typing import Any, Dict, List
 
 import httpx
 
+from config import settings
 from models.canonical.stats import TopicCount
 
 PROBLEM_URL = "https://practiceapi.geeksforgeeks.org/api/v1/problems/{slug}/"
@@ -25,27 +29,41 @@ HEADERS = {
 # is safe and avoids re-fetching the same problem across users/requests.
 _TAG_CACHE: Dict[str, List[str]] = {}
 
+# Ten concurrent lookups was the incident's fan-out; the budget, not this
+# number, is what bounds total time.
 _CONCURRENCY = 10
 
 
 async def _fetch_topic_tags(slug: str) -> List[str]:
+    """Return tags for one problem. Failures are transient and never cached."""
     if not slug:
         return []
     if slug in _TAG_CACHE:
         return _TAG_CACHE[slug]
 
-    tags: List[str] = []
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=min(settings.request_timeout, settings.topic_timeout)) as client:
             response = await client.get(PROBLEM_URL.format(slug=slug), headers=HEADERS)
-        if response.status_code == 200:
-            payload: Dict[str, Any] = response.json()
-            tags = list(payload.get("results", {}).get("tags", {}).get("topic_tags", []) or [])
-    except (httpx.HTTPError, ValueError):
-        tags = []
+    except httpx.HTTPError:
+        return []
 
-    _TAG_CACHE[slug] = tags
-    return tags
+    if response.status_code != 200:
+        return []
+
+    try:
+        payload: Dict[str, Any] = response.json()
+    except ValueError:
+        return []
+
+    results = payload.get("results") if isinstance(payload, dict) else None
+    tags = results.get("tags") if isinstance(results, dict) else None
+    value = tags.get("topic_tags") if isinstance(tags, dict) else None
+    if not isinstance(value, list):
+        return []
+
+    cleaned = [tag for tag in value if isinstance(tag, str)]
+    _TAG_CACHE[slug] = cleaned
+    return cleaned
 
 
 async def build_topic_analysis(all_problems: List[Dict[str, Any]]) -> List[TopicCount]:
@@ -59,7 +77,17 @@ async def build_topic_analysis(all_problems: List[Dict[str, Any]]) -> List[Topic
         async with semaphore:
             return await _fetch_topic_tags(slug)
 
-    results = await asyncio.gather(*(_bounded_fetch(slug) for slug in slugs))
+    tasks = [asyncio.ensure_future(_bounded_fetch(slug)) for slug in slugs]
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks), timeout=max(0.05, float(settings.topic_timeout))
+        )
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        # Drop queued lookups too; a cancelled request must not leave work behind.
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        return []
 
     counts: Dict[str, int] = {}
     for tags in results:
