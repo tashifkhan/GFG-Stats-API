@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
 from config import settings
+from core.analytics import AnalyticsMiddleware
 from core.middleware import CacheRateLimitMiddleware
 from core.deadline import RequestDeadlineMiddleware
 from models.exceptions import http_exception_handler
@@ -24,6 +25,8 @@ app = FastAPI(
 
 app.add_middleware(CacheRateLimitMiddleware, platform="gfg")
 app.add_middleware(RequestDeadlineMiddleware)
+# Outside the cache so cache hits and 429s are counted; inside CORS.
+app.add_middleware(AnalyticsMiddleware, api="gfg")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
