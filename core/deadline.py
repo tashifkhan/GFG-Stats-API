@@ -1,6 +1,7 @@
 """Bound the complete request, including cache and optional enrichment."""
 
 import asyncio
+import json
 import logging
 import time
 
@@ -8,6 +9,7 @@ import httpx
 from starlette.responses import JSONResponse
 
 from config import settings
+from core.cache_control import _no_store
 from core.runtime import RequestState, state
 
 logger = logging.getLogger("gfg")
@@ -47,7 +49,16 @@ class RequestDeadlineMiddleware:
             if message["type"] == "http.response.start":
                 response_started = True
                 status = message["status"]
-                cache = dict(message.get("headers", [])).get(b"x-cache", b"disabled").decode()
+                headers = list(message.get("headers", []))
+                cache = dict(headers).get(b"x-cache", b"disabled").decode()
+                current = state.get()
+                if current and current.meta:
+                    headers = _no_store(headers)
+                    headers.append((
+                        b"x-data-state",
+                        json.dumps(current.meta, separators=(",", ":")).encode(),
+                    ))
+                    message["headers"] = headers
             await send(message)
 
         async with httpx.AsyncClient(
@@ -71,7 +82,7 @@ class RequestDeadlineMiddleware:
                         "status_code": 504,
                         "endpoint": endpoint,
                     },
-                    headers={"Cache-Control": "no-store"},
+                    headers=_no_store({}),
                 )
                 await response(scope, receive, tracked_send)
             finally:

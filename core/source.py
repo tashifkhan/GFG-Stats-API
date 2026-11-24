@@ -8,9 +8,16 @@ import uuid
 from fastapi import HTTPException
 
 from core.cache import command, get_json, redis_enabled, set_json
-from core.runtime import once
+from core.runtime import once, state
 
 RELEASE = "if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end return 0"
+
+
+def _serve_stale(cached):
+    current = state.get()
+    if current:
+        current.meta["source"] = {"status": "stale", "updatedAt": cached.get("at")}
+    return cached.get("data")
 
 
 async def source(key, producer, ttl=300, stale_ttl=3600):
@@ -28,7 +35,7 @@ async def source(key, producer, ttl=300, stale_ttl=3600):
         if store and not locked:
             # Another invocation is already refreshing this key.
             if cached is not None:
-                return cached.get("data")
+                return _serve_stale(cached)
             # Bounded coalescing: a failed cache must not become an unbounded wait.
             for _ in range(3):
                 await asyncio.sleep(0.05)
@@ -40,7 +47,7 @@ async def source(key, producer, ttl=300, stale_ttl=3600):
             data = await producer()
         except (HTTPException, TimeoutError):
             if cached is not None:
-                return cached.get("data")
+                return _serve_stale(cached)
             raise
         else:
             await set_json(key, {"at": time.time(), "data": data}, stale_ttl)
