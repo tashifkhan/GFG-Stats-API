@@ -14,6 +14,7 @@ class RequestState:
     deadline: float
     client: httpx.AsyncClient
     tasks: dict = field(default_factory=dict)
+    meta: dict = field(default_factory=dict)
 
 
 state: ContextVar[RequestState | None] = ContextVar("gfg_request_state", default=None)

@@ -57,13 +57,15 @@ async def check_rate_limit(key: str, limit: int, window_seconds: int, label: str
             return RateLimitResult(allowed=True)
         if count == 1:
             await _bounded(client.expire(counter_key, window_seconds))
+            # A fresh window clears the old escalation. The extra DEL happens
+            # once per window, not on every allowed request.
+            await _bounded(client.delete(violations_key))
 
         ttl = await _bounded(client.ttl(counter_key))
         ttl = ttl if isinstance(ttl, int) else 0
         reset_at = now + max(ttl, 0)
         remaining = max(limit - count, 0)
         if count <= limit:
-            await _bounded(client.delete(violations_key))
             return RateLimitResult(True, 0, label, limit, remaining, reset_at)
 
         violations = await _bounded(client.incr(violations_key))
