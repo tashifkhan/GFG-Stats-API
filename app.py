@@ -26,7 +26,7 @@ app = FastAPI(
 app.add_middleware(CacheRateLimitMiddleware, platform="gfg")
 app.add_middleware(RequestDeadlineMiddleware)
 # Outside the cache so cache hits and 429s are counted; inside CORS.
-app.add_middleware(AnalyticsMiddleware, api="gfg")
+app.add_middleware(AnalyticsMiddleware, api="gfg", wait=True)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
